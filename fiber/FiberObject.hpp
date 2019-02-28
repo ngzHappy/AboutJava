@@ -28,21 +28,36 @@ namespace fiber_function_basic {
     class FiberData {
     public:
         using fiber_type = boost::context::fiber;
+        static inline constexpr std::size_t getDefaultStackSize();
     private:
+        std::size_t const stackSize;
         fiber_type * runtimeFiber{ nullptr };
         FiberState state{ FiberState::Yield };
         std::optional<fiber_type> fiber;
         template<typename, typename>
         friend class ::fiber_function_basic::FiberObject;
     public:
-        inline FiberData() = default;
+        inline FiberData(std::size_t = getDefaultStackSize());
         inline virtual ~FiberData() = default;
+    public:
+        inline std::size_t getStackSize() const;
     public:
         FiberData(const FiberData &) = delete;
         FiberData(FiberData &&) = delete;
         FiberData&operator=(const FiberData &) = delete;
         FiberData&operator=(FiberData &&) = delete;
     };
+
+    inline FiberData::FiberData(std::size_t argSS) :stackSize(argSS) {
+    }
+
+    inline std::size_t FiberData::getStackSize() const {
+        return stackSize;
+    }
+
+    inline constexpr std::size_t FiberData::getDefaultStackSize() {
+        return 1024uLL * 1024uLL * 10uLL;
+    }
 
     /*
     TParent：
@@ -59,7 +74,8 @@ namespace fiber_function_basic {
     private:
         std::shared_ptr< FiberDataType > mmmData;
     public:
-        inline FiberObject(std::size_t = 1024uLL * 1024uLL * 10uLL);
+        inline FiberObject(std::shared_ptr<FiberDataType>/**/
+            = std::make_shared<FiberDataType>());
     public:
         FiberObject(const FiberObject &) = default;
         FiberObject(FiberObject &&) = default;
@@ -81,13 +97,14 @@ namespace fiber_function_basic {
     };
 
     template<typename TParent, typename FiberDataType >
-    inline FiberObject<TParent, FiberDataType>::FiberObject(std::size_t argSizeOfFiber) {
-        mmmData = std::make_shared<FiberDataType>();
+    inline FiberObject<TParent, FiberDataType>::FiberObject(
+        std::shared_ptr<FiberDataType> argSizeOfFiber) {
+        mmmData = std::move(argSizeOfFiber);
         using this_stack =
             boost::context::protected_fixedsize_stack;
         mmmData->FiberData::fiber.emplace(
             std::allocator_arg,
-            this_stack{ argSizeOfFiber },
+            this_stack{ mmmData->FiberData::stackSize },
             [this](fiber_type && argFiber)->fiber_type {
             mmmData->FiberData::runtimeFiber = &argFiber;
             return FiberObject::thisCall(std::move(argFiber));
@@ -116,7 +133,8 @@ namespace fiber_function_basic {
             return varState;
         }
         varState = FiberState::Calling;
-        *(mmmData->FiberData::fiber) = std::move(*(mmmData->FiberData::fiber)).resume();
+        *(mmmData->FiberData::fiber) = 
+            std::move(*(mmmData->FiberData::fiber)).resume();
         if (varState != FiberState::Calling) {
             return varState;
         }
@@ -139,7 +157,8 @@ namespace fiber_function_basic {
     inline void FiberObject<TParent, FiberDataType>::_fiberYield() const {
         assert(mmmData->runtimeFiber);
         mmmData->FiberData::state = FiberState::Yield;
-        *(mmmData->FiberData::runtimeFiber) = std::move(*(mmmData->FiberData::runtimeFiber)).resume();
+        *(mmmData->FiberData::runtimeFiber) = 
+            std::move(*(mmmData->FiberData::runtimeFiber)).resume();
     }
 
     template<typename TParent, typename FiberDataType>
@@ -148,7 +167,8 @@ namespace fiber_function_basic {
     }
 
     template<typename TParent, typename FiberDataType>
-    inline std::shared_ptr< FiberDataType > FiberObject<TParent, FiberDataType>::getFiberData() const {
+    inline std::shared_ptr< FiberDataType >
+        FiberObject<TParent, FiberDataType>::getFiberData() const {
         return mmmData;
     }
 
