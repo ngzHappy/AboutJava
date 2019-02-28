@@ -22,6 +22,14 @@ namespace fiber_function_basic {
         Calling,
     };
 
+    class FiberData {
+    public:
+        using fiber_type = boost::context::fiber;
+        fiber_type * runtimeFiber{ nullptr };
+        FiberState state{ FiberState::Yield };
+        std::optional<fiber_type> fiber;
+    };
+
     /*
         void doCall() ;
         void doOnException(std::exception_ptr) noexcept;
@@ -29,16 +37,9 @@ namespace fiber_function_basic {
     template<typename TParent>
     class FiberObject {
     public:
-        using fiber_type = boost::context::fiber;
-        using fiber_basic_type = TParent;
+        using fiber_type = FiberData::fiber_type;
     private:
-        class Data {
-        public:
-            fiber_type * runtimeFiber{ nullptr };
-            FiberState state{ FiberState::Yield };
-            std::optional<fiber_type> fiber;
-        };
-        std::shared_ptr< Data > mmmData;
+        std::shared_ptr< FiberData > mmmData;
     public:
         inline FiberObject(std::size_t = 1024uLL * 1024uLL * 10uLL);
     public:
@@ -47,11 +48,13 @@ namespace fiber_function_basic {
         FiberObject&operator=(const FiberObject &) = default;
         FiberObject&operator=(FiberObject &&) = default;
     public:
-        inline void operator()() const;
-    public:
-        inline void yield();
-    public:
         inline FiberState getFiberState() const;
+    public:
+        inline void _fiberCall() const;
+    private:
+        inline void operator()() const;
+    protected:
+        inline void _fiberYield() const;
     private:
         inline fiber_type thisCall(fiber_type &&);
         inline FiberState callThis();
@@ -59,7 +62,7 @@ namespace fiber_function_basic {
 
     template<typename TParent>
     inline FiberObject<TParent>::FiberObject(std::size_t argSizeOfFiber) {
-        mmmData = std::make_shared<Data>();
+        mmmData = std::make_shared<FiberData>();
         using this_stack =
             boost::context::protected_fixedsize_stack;
         mmmData->fiber.emplace(
@@ -67,7 +70,7 @@ namespace fiber_function_basic {
             this_stack{ argSizeOfFiber },
             [this](fiber_type && argFiber)->fiber_type {
             mmmData->runtimeFiber = &argFiber;
-            return this->thisCall(std::move(argFiber));
+            return FiberObject::thisCall(std::move(argFiber));
         });
     }
 
@@ -75,10 +78,12 @@ namespace fiber_function_basic {
     inline typename FiberObject<TParent>::fiber_type FiberObject<TParent>::thisCall(
         fiber_type && argFiber) {
         try {
-            static_cast<TParent *>(this)->doCall();
+            static_cast<TParent *>(this)
+                ->doCall();
         } catch (...) {
             mmmData->state = FiberState::Error;
-            static_cast<TParent *>(this)->doOnException(std::current_exception());
+            static_cast<TParent *>(this)
+                ->doOnException(std::current_exception());
         }
         return std::move(argFiber);
     }
@@ -101,11 +106,16 @@ namespace fiber_function_basic {
     inline void FiberObject<TParent>::operator()() const {
         auto varThis =
             const_cast<FiberObject *>(this);
-        varThis->callThis();
+        varThis->FiberObject::callThis();
     }
 
     template<typename TParent>
-    inline void FiberObject<TParent>::yield() {
+    inline void FiberObject<TParent>::_fiberCall() const {
+        (*this).FiberObject::operator()();
+    }
+
+    template<typename TParent>
+    inline void FiberObject<TParent>::_fiberYield() const {
         assert(mmmData->runtimeFiber);
         mmmData->state = FiberState::Yield;
         *(mmmData->runtimeFiber) = std::move(*(mmmData->runtimeFiber)).resume();
@@ -117,4 +127,17 @@ namespace fiber_function_basic {
     }
 
 }/*namespace fiber_function_basic*/
+
+#ifndef yield_the_fiber
+#define yield_the_fiber() { this->_fiberYield() ; } \
+    static_assert(true) /**/
+#endif
+
+#ifndef call_the_fiber
+#define call_the_fiber(_ARG_FIBER_CALLER_) { \
+    const auto & vArFBCER_0x3367 = _ARG_FIBER_CALLER_ ; \
+    vArFBCER_0x3367._fiberCall() ; } \
+    static_assert(true) /**/
+#endif
+
 
