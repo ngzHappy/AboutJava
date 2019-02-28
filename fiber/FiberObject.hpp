@@ -53,7 +53,7 @@ namespace fiber_function_basic {
         inline void _fiberCall() const;
     private:
         inline void operator()() const;
-    protected:
+    public:
         inline void _fiberYield() const;
     private:
         inline fiber_type thisCall(fiber_type &&);
@@ -129,7 +129,9 @@ namespace fiber_function_basic {
 }/*namespace fiber_function_basic*/
 
 #ifndef yield_the_fiber
-#define yield_the_fiber() { this->_fiberYield() ; } \
+#define yield_the_fiber(_ARG_FIBER_CALLER_) { \
+    const auto & vArFBCER_0x3367 = _ARG_FIBER_CALLER_ ; \
+    vArFBCER_0x3367._fiberYield() ; } \
     static_assert(true) /**/
 #endif
 
